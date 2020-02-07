@@ -187,30 +187,30 @@ pub fn jsmn_parse(
     js: &[u8],
     tokens: &mut [JsmnToken],
 ) -> Result<i32, JsmnError> {
-    let mut count: i32 = parser.tok_next as i32;
+    let mut count = parser.tok_next as i32;
     while (parser.pos as usize) < js.len() {
         let c = js[parser.pos as usize];
-        match c as i32 {
-            123 | 91 => {
+        match c {
+            b'{' | b'[' => {
                 count += 1;
                 let token = jsmn_alloc_token(parser, tokens);
                 if token.is_none() {
                     return Err(JsmnError::NoMemory);
                 }
-                if parser.tok_super != -(1 as i32) {
+                if parser.tok_super != -1 {
                     let mut t = &mut tokens[parser.tok_super as usize];
                     t.size += 1
                 }
                 let token = &mut tokens[token.unwrap()];
-                token.type_0 = if c as i32 == '{' as i32 {
+                token.type_0 = if c == b'{' {
                     JsmnType::Object
                 } else {
                     JsmnType::Array
                 };
                 token.start = parser.pos as i32;
-                parser.tok_super = parser.tok_next.wrapping_sub(1 as i32 as u32) as i32
+                parser.tok_super = parser.tok_next as i32 - 1;
             }
-            125 | 93 => {
+            b'}' | b']' => {
                 let type_0 = if c == b'}' {
                     JsmnType::Object
                 } else {
@@ -219,11 +219,11 @@ pub fn jsmn_parse(
                 let mut i = (parser.tok_next - 1) as i32;
                 while i >= 0 as i32 {
                     let token = &mut tokens[i as usize];
-                    if token.start != -(1 as i32) && token.end == -(1 as i32) {
+                    if token.start != -1 && token.end == -1 {
                         if token.type_0 as u32 != type_0 as u32 {
                             return Err(JsmnError::Invalid);
                         }
-                        parser.tok_super = -(1 as i32);
+                        parser.tok_super = -1;
                         token.end = parser.pos.wrapping_add(1 as i32 as u32) as i32;
                         break;
                     } else {
@@ -231,12 +231,12 @@ pub fn jsmn_parse(
                     }
                 }
                 /* Error if unmatched closing bracket */
-                if i == -(1 as i32) {
+                if i == -1 {
                     return Err(JsmnError::Invalid);
                 }
                 while i >= 0 as i32 {
                     let token = &mut tokens[i as usize];
-                    if token.start != -(1 as i32) && token.end == -(1 as i32) {
+                    if token.start != -1 && token.end == -1 {
                         parser.tok_super = i;
                         break;
                     } else {
@@ -244,7 +244,7 @@ pub fn jsmn_parse(
                     }
                 }
             }
-            34 => {
+            b'"' => {
                 let r = jsmn_parse_string(parser, js, tokens);
                 if r < 0 {
                     return Ok(r);
@@ -254,19 +254,18 @@ pub fn jsmn_parse(
                     tokens[parser.tok_super as usize].size += 1
                 }
             }
-            9 | 13 | 10 | 32 => {}
-            58 => parser.tok_super = parser.tok_next.wrapping_sub(1 as i32 as u32) as i32,
-            44 => {
+            b'\t' | b'\r' | b'\n' | b' ' => {}
+            b':' => parser.tok_super = parser.tok_next.wrapping_sub(1 as i32 as u32) as i32,
+            b',' => {
                 if parser.tok_super != -1
                     && tokens[parser.tok_super as usize].type_0 != JsmnType::Array
                     && tokens[parser.tok_super as usize].type_0 != JsmnType::Object
                 {
                     let mut i = parser.tok_next as i32 - 1;
-                    while i >= 0 as i32 {
-                        if tokens[i as usize].type_0 == JsmnType::Array
-                            || tokens[i as usize].type_0 == JsmnType::Object
-                        {
-                            if tokens[i as usize].start != -1 && tokens[i as usize].end == -1 {
+                    while i >= 0 {
+                        let t = &tokens[i as usize];
+                        if let JsmnType::Array | JsmnType::Object = t.type_0 {
+                            if t.start != -1 && t.end == -1 {
                                 parser.tok_super = i;
                                 break;
                             }
@@ -292,7 +291,7 @@ pub fn jsmn_parse(
     let mut i = parser.tok_next as i32 - 1;
     while i >= 0 as i32 {
         /* Unmatched opened object or array */
-        if tokens[i as usize].start != -(1 as i32) && tokens[i as usize].end == -1 {
+        if tokens[i as usize].start != -1 && tokens[i as usize].end == -1 {
             return Err(JsmnError::Part);
         }
         i -= 1
