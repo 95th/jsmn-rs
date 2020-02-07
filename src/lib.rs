@@ -21,36 +21,45 @@ pub const JSMN_ERROR_PART: jsmnerr = -3;
 pub const JSMN_ERROR_INVAL: jsmnerr = -2;
 /* Not enough tokens were provided */
 pub const JSMN_ERROR_NOMEM: jsmnerr = -1;
-#[derive(Copy, Clone)]
+#[derive(Default, Debug, Copy, Clone)]
 #[repr(C)]
-pub struct jsmntok_t {
+pub struct JsmnToken {
     pub type_0: jsmntype_t,
     pub start: libc::c_int,
     pub end: libc::c_int,
     pub size: libc::c_int,
 }
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct jsmn_parser {
-    pub pos: libc::c_uint,
-    pub toknext: libc::c_uint,
-    pub toksuper: libc::c_int,
+
+pub struct JsmnParser {
+    pub pos: u32,
+    pub toknext: u32,
+    pub toksuper: i32,
+}
+
+impl JsmnParser {
+    pub fn new() -> Self {
+        Self {
+            pos: 0,
+            toknext: 0,
+            toksuper: -1,
+        }
+    }
 }
 /* *
  * Allocates a fresh unused token from the token pool.
  */
 unsafe extern "C" fn jsmn_alloc_token(
-    mut parser: *mut jsmn_parser,
-    mut tokens: *mut jsmntok_t,
+    mut parser: *mut JsmnParser,
+    mut tokens: *mut JsmnToken,
     num_tokens: size_t,
-) -> *mut jsmntok_t {
-    let mut tok: *mut jsmntok_t = 0 as *mut jsmntok_t;
+) -> *mut JsmnToken {
+    let mut tok: *mut JsmnToken = 0 as *mut JsmnToken;
     if (*parser).toknext as libc::c_ulong >= num_tokens {
-        return 0 as *mut jsmntok_t;
+        return 0 as *mut JsmnToken;
     }
     let fresh0 = (*parser).toknext;
     (*parser).toknext = (*parser).toknext.wrapping_add(1);
-    tok = &mut *tokens.offset(fresh0 as isize) as *mut jsmntok_t;
+    tok = &mut *tokens.offset(fresh0 as isize) as *mut JsmnToken;
     (*tok).end = -(1 as libc::c_int);
     (*tok).start = (*tok).end;
     (*tok).size = 0 as libc::c_int;
@@ -60,7 +69,7 @@ unsafe extern "C" fn jsmn_alloc_token(
  * Fills token type and boundaries.
  */
 fn jsmn_fill_token(
-    token: &mut jsmntok_t,
+    token: &mut JsmnToken,
     type_0: jsmntype_t,
     start: libc::c_int,
     end: libc::c_int,
@@ -74,13 +83,13 @@ fn jsmn_fill_token(
  * Fills next available token with JSON primitive.
  */
 unsafe extern "C" fn jsmn_parse_primitive(
-    mut parser: *mut jsmn_parser,
+    mut parser: *mut JsmnParser,
     mut js: *const libc::c_char,
     len: size_t,
-    mut tokens: *mut jsmntok_t,
+    mut tokens: *mut JsmnToken,
     num_tokens: size_t,
 ) -> libc::c_int {
-    let mut token: *mut jsmntok_t = 0 as *mut jsmntok_t;
+    let mut token: *mut JsmnToken = 0 as *mut JsmnToken;
     let mut start: libc::c_int = 0;
     start = (*parser).pos as libc::c_int;
     while ((*parser).pos as libc::c_ulong) < len
@@ -124,13 +133,13 @@ unsafe extern "C" fn jsmn_parse_primitive(
  * Fills next token with JSON string.
  */
 unsafe extern "C" fn jsmn_parse_string(
-    mut parser: *mut jsmn_parser,
+    mut parser: *mut JsmnParser,
     mut js: *const libc::c_char,
     len: size_t,
-    mut tokens: *mut jsmntok_t,
+    mut tokens: *mut JsmnToken,
     num_tokens: size_t,
 ) -> libc::c_int {
-    let mut token: *mut jsmntok_t = 0 as *mut jsmntok_t;
+    let mut token: *mut JsmnToken = 0 as *mut JsmnToken;
     let mut start: libc::c_int = (*parser).pos as libc::c_int;
     (*parser).pos = (*parser).pos.wrapping_add(1);
     /* Skip starting quote */
@@ -216,15 +225,15 @@ unsafe extern "C" fn jsmn_parse_string(
  */
 #[no_mangle]
 pub unsafe extern "C" fn jsmn_parse(
-    mut parser: *mut jsmn_parser,
+    mut parser: *mut JsmnParser,
     mut js: *const libc::c_char,
     len: size_t,
-    mut tokens: *mut jsmntok_t,
+    mut tokens: *mut JsmnToken,
     num_tokens: libc::c_uint,
 ) -> libc::c_int {
     let mut r: libc::c_int = 0;
     let mut i: libc::c_int = 0;
-    let mut token: *mut jsmntok_t = 0 as *mut jsmntok_t;
+    let mut token: *mut JsmnToken = 0 as *mut JsmnToken;
     let mut count: libc::c_int = (*parser).toknext as libc::c_int;
     while ((*parser).pos as libc::c_ulong) < len
         && *js.offset((*parser).pos as isize) as libc::c_int != '\u{0}' as i32
@@ -241,8 +250,8 @@ pub unsafe extern "C" fn jsmn_parse(
                         return JSMN_ERROR_NOMEM as libc::c_int;
                     }
                     if (*parser).toksuper != -(1 as libc::c_int) {
-                        let mut t: *mut jsmntok_t =
-                            &mut *tokens.offset((*parser).toksuper as isize) as *mut jsmntok_t;
+                        let mut t: *mut JsmnToken =
+                            &mut *tokens.offset((*parser).toksuper as isize) as *mut JsmnToken;
                         (*t).size += 1
                     }
                     (*token).type_0 = if c as libc::c_int == '{' as i32 {
@@ -269,7 +278,7 @@ pub unsafe extern "C" fn jsmn_parse(
                         .wrapping_sub(1 as libc::c_int as libc::c_uint)
                         as libc::c_int;
                     while i >= 0 as libc::c_int {
-                        token = &mut *tokens.offset(i as isize) as *mut jsmntok_t;
+                        token = &mut *tokens.offset(i as isize) as *mut JsmnToken;
                         if (*token).start != -(1 as libc::c_int)
                             && (*token).end == -(1 as libc::c_int)
                         {
@@ -290,7 +299,7 @@ pub unsafe extern "C" fn jsmn_parse(
                         return JSMN_ERROR_INVAL as libc::c_int;
                     }
                     while i >= 0 as libc::c_int {
-                        token = &mut *tokens.offset(i as isize) as *mut jsmntok_t;
+                        token = &mut *tokens.offset(i as isize) as *mut JsmnToken;
                         if (*token).start != -(1 as libc::c_int)
                             && (*token).end == -(1 as libc::c_int)
                         {
@@ -379,19 +388,6 @@ pub unsafe extern "C" fn jsmn_parse(
         }
     }
     return count;
-}
-/* *
- * Create JSON parser over an array of tokens
- */
-/* *
- * Creates a new parser based over a given buffer with an array of tokens
- * available.
- */
-#[no_mangle]
-pub unsafe extern "C" fn jsmn_init(mut parser: *mut jsmn_parser) {
-    (*parser).pos = 0 as libc::c_int as libc::c_uint;
-    (*parser).toknext = 0 as libc::c_int as libc::c_uint;
-    (*parser).toksuper = -(1 as libc::c_int);
 }
 /* JSMN_H */
 /* JSMN_HEADER */
