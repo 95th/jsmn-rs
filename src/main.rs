@@ -12,6 +12,7 @@ fn main() {
             (&mut t[0]) as _,
             128,
         )
+        .unwrap()
     };
 
     println!("Parsed: {:#?}", &t[..r as usize]);
