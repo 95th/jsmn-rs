@@ -105,7 +105,7 @@ fn jsmn_parse_primitive(
         start,
         parser.pos as i32,
     );
-    parser.pos = parser.pos.wrapping_sub(1);
+    parser.pos -= 1;
     Ok(0)
 }
 /* *
@@ -113,7 +113,7 @@ fn jsmn_parse_primitive(
  */
 fn jsmn_parse_string(mut parser: &mut JsmnParser, js: &[u8], tokens: &mut [JsmnToken]) -> i32 {
     let start: i32 = parser.pos as i32;
-    parser.pos = parser.pos.wrapping_add(1);
+    parser.pos += 1;
     /* Skip starting quote */
     while (parser.pos as usize) < js.len() {
         let c = js[parser.pos as usize];
@@ -142,7 +142,7 @@ fn jsmn_parse_string(mut parser: &mut JsmnParser, js: &[u8], tokens: &mut [JsmnT
                 b'"' | b'/' | b'\\' | b'b' | b'f' | b'r' | b'n' | b't' => {}
                 b'u' => {
                     /* Allows escaped symbol \uXXXX */
-                    parser.pos = parser.pos.wrapping_add(1);
+                    parser.pos += 1;
                     let mut i = 0;
                     while i < 4 && (parser.pos as usize) < js.len() {
                         /* If it isn't a hex character we have an error */
@@ -157,10 +157,10 @@ fn jsmn_parse_string(mut parser: &mut JsmnParser, js: &[u8], tokens: &mut [JsmnT
                             parser.pos = start as u32;
                             return JsmnError::Invalid as _;
                         }
-                        parser.pos = parser.pos.wrapping_add(1);
+                        parser.pos += 1;
                         i += 1
                     }
-                    parser.pos = parser.pos.wrapping_sub(1)
+                    parser.pos -= 1;
                 }
                 _ => {
                     /* Unexpected symbol */
@@ -224,7 +224,7 @@ pub fn jsmn_parse(
                             return Err(JsmnError::Invalid);
                         }
                         parser.tok_super = -1;
-                        token.end = parser.pos.wrapping_add(1 as i32 as u32) as i32;
+                        token.end = parser.pos as i32 + 1;
                         break;
                     } else {
                         i -= 1
@@ -255,7 +255,7 @@ pub fn jsmn_parse(
                 }
             }
             b'\t' | b'\r' | b'\n' | b' ' => {}
-            b':' => parser.tok_super = parser.tok_next.wrapping_sub(1 as i32 as u32) as i32,
+            b':' => parser.tok_super = parser.tok_next as i32 - 1,
             b',' => {
                 if parser.tok_super != -1
                     && tokens[parser.tok_super as usize].type_0 != JsmnType::Array
