@@ -211,8 +211,6 @@ pub unsafe extern "C" fn jsmn_parse(
     mut tokens: *mut JsmnToken,
     num_tokens: u32,
 ) -> Result<i32, JsmnError> {
-    let mut r: i32 = 0;
-    let mut i: i32 = 0;
     let mut token: *mut JsmnToken = 0 as *mut JsmnToken;
     let mut count: i32 = (*parser).tok_next as i32;
     while ((*parser).pos as usize) < len
@@ -250,7 +248,7 @@ pub unsafe extern "C" fn jsmn_parse(
                     } else {
                         JsmnType::Array
                     };
-                    i = (*parser).tok_next.wrapping_sub(1 as i32 as u32) as i32;
+                    let mut i = (*parser).tok_next.wrapping_sub(1 as i32 as u32) as i32;
                     while i >= 0 as i32 {
                         token = &mut *tokens.offset(i as isize) as *mut JsmnToken;
                         if (*token).start != -(1 as i32) && (*token).end == -(1 as i32) {
@@ -280,8 +278,8 @@ pub unsafe extern "C" fn jsmn_parse(
                 }
             }
             34 => {
-                r = jsmn_parse_string(parser, js, len, tokens, num_tokens as usize);
-                if r < 0 as i32 {
+                let r = jsmn_parse_string(parser, js, len, tokens, num_tokens as usize);
+                if r < 0 {
                     return Ok(r);
                 }
                 count += 1;
@@ -300,7 +298,7 @@ pub unsafe extern "C" fn jsmn_parse(
                     && (*tokens.offset((*parser).tok_super as isize)).type_0 as u32
                         != JsmnType::Object as i32 as u32
                 {
-                    i = (*parser).tok_next.wrapping_sub(1 as i32 as u32) as i32;
+                    let mut i = (*parser).tok_next.wrapping_sub(1 as i32 as u32) as i32;
                     while i >= 0 as i32 {
                         if (*tokens.offset(i as isize)).type_0 as u32
                             == JsmnType::Array as i32 as u32
@@ -320,13 +318,13 @@ pub unsafe extern "C" fn jsmn_parse(
             }
             _ => {
                 /* In non-strict mode every unquoted value is a primitive */
-                r = jsmn_parse_primitive(
+                let r = jsmn_parse_primitive(
                     &mut *parser,
                     std::slice::from_raw_parts(js, len),
                     tokens,
                     num_tokens as usize,
                 )?;
-                if r < 0 as i32 {
+                if r < 0 {
                     return Ok(r);
                 }
                 count += 1;
@@ -339,7 +337,7 @@ pub unsafe extern "C" fn jsmn_parse(
         (*parser).pos = (*parser).pos.wrapping_add(1)
     }
     if !tokens.is_null() {
-        i = (*parser).tok_next.wrapping_sub(1 as i32 as u32) as i32;
+        let mut i = (*parser).tok_next.wrapping_sub(1 as i32 as u32) as i32;
         while i >= 0 as i32 {
             /* Unmatched opened object or array */
             if (*tokens.offset(i as isize)).start != -(1 as i32)
