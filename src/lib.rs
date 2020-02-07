@@ -1,19 +1,19 @@
-#![allow(
-    dead_code,
-    mutable_transmutes,
-    non_camel_case_types,
-    non_snake_case,
-    non_upper_case_globals,
-    unused_assignments,
-    unused_mut
-)]
+#[derive(Debug, Copy, Clone)]
+pub enum JsmnType {
+    Undefined,
+    Object,
+    Array,
+    Str,
+    Primitive,
+}
+
+impl Default for JsmnType {
+    fn default() -> Self {
+        Self::Undefined
+    }
+}
+
 pub type size_t = libc::c_ulong;
-pub type jsmntype_t = libc::c_uint;
-pub const JSMN_PRIMITIVE: jsmntype_t = 4;
-pub const JSMN_STRING: jsmntype_t = 3;
-pub const JSMN_ARRAY: jsmntype_t = 2;
-pub const JSMN_OBJECT: jsmntype_t = 1;
-pub const JSMN_UNDEFINED: jsmntype_t = 0;
 pub type jsmnerr = libc::c_int;
 /* The string is not a full JSON packet, more bytes expected */
 pub const JSMN_ERROR_PART: jsmnerr = -3;
@@ -21,10 +21,11 @@ pub const JSMN_ERROR_PART: jsmnerr = -3;
 pub const JSMN_ERROR_INVAL: jsmnerr = -2;
 /* Not enough tokens were provided */
 pub const JSMN_ERROR_NOMEM: jsmnerr = -1;
+
 #[derive(Default, Debug, Copy, Clone)]
 #[repr(C)]
 pub struct JsmnToken {
-    pub type_0: jsmntype_t,
+    pub type_0: JsmnType,
     pub start: libc::c_int,
     pub end: libc::c_int,
     pub size: libc::c_int,
@@ -68,12 +69,7 @@ unsafe extern "C" fn jsmn_alloc_token(
 /* *
  * Fills token type and boundaries.
  */
-fn jsmn_fill_token(
-    token: &mut JsmnToken,
-    type_0: jsmntype_t,
-    start: libc::c_int,
-    end: libc::c_int,
-) {
+fn jsmn_fill_token(token: &mut JsmnToken, type_0: JsmnType, start: libc::c_int, end: libc::c_int) {
     token.type_0 = type_0;
     token.start = start;
     token.end = end;
@@ -122,7 +118,7 @@ unsafe extern "C" fn jsmn_parse_primitive(
     }
     jsmn_fill_token(
         &mut *token,
-        JSMN_PRIMITIVE,
+        JsmnType::Primitive,
         start,
         (*parser).pos as libc::c_int,
     );
@@ -159,7 +155,7 @@ unsafe extern "C" fn jsmn_parse_string(
             }
             jsmn_fill_token(
                 &mut *token,
-                JSMN_STRING,
+                JsmnType::Str,
                 start + 1 as libc::c_int,
                 (*parser).pos as libc::c_int,
             );
@@ -239,7 +235,7 @@ pub unsafe extern "C" fn jsmn_parse(
         && *js.offset((*parser).pos as isize) as libc::c_int != '\u{0}' as i32
     {
         let mut c: libc::c_char = 0;
-        let mut type_0: jsmntype_t = JSMN_UNDEFINED;
+        let mut type_0 = JsmnType::Undefined;
         c = *js.offset((*parser).pos as isize);
         match c as libc::c_int {
             123 | 91 => {
@@ -255,10 +251,10 @@ pub unsafe extern "C" fn jsmn_parse(
                         (*t).size += 1
                     }
                     (*token).type_0 = if c as libc::c_int == '{' as i32 {
-                        JSMN_OBJECT as libc::c_int
+                        JsmnType::Object
                     } else {
-                        JSMN_ARRAY as libc::c_int
-                    } as jsmntype_t;
+                        JsmnType::Array
+                    };
                     (*token).start = (*parser).pos as libc::c_int;
                     (*parser).toksuper = (*parser)
                         .toknext
@@ -269,10 +265,10 @@ pub unsafe extern "C" fn jsmn_parse(
             125 | 93 => {
                 if !tokens.is_null() {
                     type_0 = if c as libc::c_int == '}' as i32 {
-                        JSMN_OBJECT as libc::c_int
+                        JsmnType::Object
                     } else {
-                        JSMN_ARRAY as libc::c_int
-                    } as jsmntype_t;
+                        JsmnType::Array
+                    };
                     i = (*parser)
                         .toknext
                         .wrapping_sub(1 as libc::c_int as libc::c_uint)
@@ -333,9 +329,9 @@ pub unsafe extern "C" fn jsmn_parse(
                 if !tokens.is_null()
                     && (*parser).toksuper != -(1 as libc::c_int)
                     && (*tokens.offset((*parser).toksuper as isize)).type_0 as libc::c_uint
-                        != JSMN_ARRAY as libc::c_int as libc::c_uint
+                        != JsmnType::Array as libc::c_int as libc::c_uint
                     && (*tokens.offset((*parser).toksuper as isize)).type_0 as libc::c_uint
-                        != JSMN_OBJECT as libc::c_int as libc::c_uint
+                        != JsmnType::Object as libc::c_int as libc::c_uint
                 {
                     i = (*parser)
                         .toknext
@@ -343,9 +339,9 @@ pub unsafe extern "C" fn jsmn_parse(
                         as libc::c_int;
                     while i >= 0 as libc::c_int {
                         if (*tokens.offset(i as isize)).type_0 as libc::c_uint
-                            == JSMN_ARRAY as libc::c_int as libc::c_uint
+                            == JsmnType::Array as libc::c_int as libc::c_uint
                             || (*tokens.offset(i as isize)).type_0 as libc::c_uint
-                                == JSMN_OBJECT as libc::c_int as libc::c_uint
+                                == JsmnType::Object as libc::c_int as libc::c_uint
                         {
                             if (*tokens.offset(i as isize)).start != -(1 as libc::c_int)
                                 && (*tokens.offset(i as isize)).end == -(1 as libc::c_int)
