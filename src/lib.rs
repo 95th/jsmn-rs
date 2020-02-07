@@ -1,4 +1,4 @@
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Copy, Clone)]
 #[repr(C)]
 pub struct Token {
     pub kind: TokenKind,
@@ -7,7 +7,7 @@ pub struct Token {
     pub size: i32,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum TokenKind {
     Undefined,
     Object,
