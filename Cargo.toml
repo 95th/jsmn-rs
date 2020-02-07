@@ -3,5 +3,7 @@ name = "jsmn"
 version = "0.1.0"
 authors = ["95th <vargwin@gmail.com>"]
 edition = "2018"
+description = "A minimalistic JSON parser"
+license = "MIT"
 
 [dependencies]
