@@ -1,4 +1,13 @@
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Default, Debug, Clone)]
+#[repr(C)]
+pub struct Token {
+    pub kind: TokenKind,
+    pub start: i32,
+    pub end: i32,
+    pub size: i32,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum TokenKind {
     Undefined,
     Object,
@@ -22,15 +31,6 @@ pub enum Error {
     Invalid,
     /// Not enough tokens were provided
     NoMemory,
-}
-
-#[derive(Default, Debug, Copy, Clone)]
-#[repr(C)]
-pub struct Token {
-    pub kind: TokenKind,
-    pub start: i32,
-    pub end: i32,
-    pub size: i32,
 }
 
 #[derive(Default)]
@@ -62,8 +62,7 @@ impl JsonParser {
                     count += 1;
                     let i = self.alloc_token(tokens).ok_or(Error::NoMemory)?;
                     if self.tok_super != -1 {
-                        let mut t = &mut tokens[self.tok_super as usize];
-                        t.size += 1
+                        tokens[self.tok_super as usize].size += 1
                     }
                     let token = &mut tokens[i];
                     token.kind = if c == b'{' {
@@ -75,7 +74,7 @@ impl JsonParser {
                     self.tok_super = self.tok_next as i32 - 1;
                 }
                 b'}' | b']' => {
-                    let type_0 = if c == b'}' {
+                    let kind = if c == b'}' {
                         TokenKind::Object
                     } else {
                         TokenKind::Array
@@ -84,7 +83,7 @@ impl JsonParser {
                     while i >= 0 {
                         let token = &mut tokens[i as usize];
                         if token.start != -1 && token.end == -1 {
-                            if token.kind as u32 != type_0 as u32 {
+                            if token.kind != kind {
                                 return Err(Error::Invalid);
                             }
                             self.tok_super = -1;
@@ -172,7 +171,7 @@ impl JsonParser {
                 _ => {}
             }
 
-            if (js[self.pos as usize]) < 32 || js[self.pos as usize] >= 127 {
+            if js[self.pos as usize] < 32 || js[self.pos as usize] >= 127 {
                 self.pos = start as u32;
                 return Err(Error::Invalid);
             }
@@ -272,8 +271,8 @@ impl JsonParser {
 }
 
 /// Fills token type and boundaries.
-fn fill_token(token: &mut Token, type_0: TokenKind, start: i32, end: i32) {
-    token.kind = type_0;
+fn fill_token(token: &mut Token, kind: TokenKind, start: i32, end: i32) {
+    token.kind = kind;
     token.start = start;
     token.end = end;
     token.size = 0;
