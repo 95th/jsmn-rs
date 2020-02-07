@@ -1,5 +1,4 @@
 #[derive(Default, Debug, Copy, Clone)]
-#[repr(C)]
 pub struct Token {
     pub kind: TokenKind,
     pub start: i32,
@@ -23,7 +22,6 @@ impl Default for TokenKind {
 }
 
 #[derive(Debug, Copy, Clone)]
-#[repr(i32)]
 pub enum Error {
     /// The string is not a full JSON packet, more bytes expected
     Part,
