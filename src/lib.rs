@@ -33,6 +33,7 @@ pub struct JsmnToken {
     pub size: i32,
 }
 
+#[derive(Default)]
 pub struct JsmnParser {
     pub pos: u32,
     pub tok_next: u32,
@@ -42,9 +43,8 @@ pub struct JsmnParser {
 impl JsmnParser {
     pub fn new() -> Self {
         Self {
-            pos: 0,
-            tok_next: 0,
             tok_super: -1,
+            ..Default::default()
         }
     }
 }
@@ -61,7 +61,7 @@ fn jsmn_alloc_token(mut parser: &mut JsmnParser, tokens: &mut [JsmnToken]) -> Op
     tok.end = -1;
     tok.start = tok.end;
     tok.size = 0;
-    return Some(idx);
+    Some(idx)
 }
 /* *
  * Fills token type and boundaries.
@@ -111,7 +111,11 @@ fn jsmn_parse_primitive(
 /* *
  * Fills next token with JSON string.
  */
-fn jsmn_parse_string(mut parser: &mut JsmnParser, js: &[u8], tokens: &mut [JsmnToken]) -> i32 {
+fn jsmn_parse_string(
+    mut parser: &mut JsmnParser,
+    js: &[u8],
+    tokens: &mut [JsmnToken],
+) -> Result<i32, JsmnError> {
     let start: i32 = parser.pos as i32;
     parser.pos += 1;
     /* Skip starting quote */
@@ -122,7 +126,7 @@ fn jsmn_parse_string(mut parser: &mut JsmnParser, js: &[u8], tokens: &mut [JsmnT
             let token = jsmn_alloc_token(parser, tokens);
             if token.is_none() {
                 parser.pos = start as u32;
-                return JsmnError::NoMemory as _;
+                return Err(JsmnError::NoMemory);
             }
             match token {
                 Some(i) => {
@@ -130,10 +134,10 @@ fn jsmn_parse_string(mut parser: &mut JsmnParser, js: &[u8], tokens: &mut [JsmnT
                 }
                 None => {
                     parser.pos = start as _;
-                    return JsmnError::NoMemory as _;
+                    return Err(JsmnError::NoMemory);
                 }
             };
-            return 0;
+            return Ok(0);
         }
         /* Backslash: Quoted symbol expected */
         if c as i32 == '\\' as i32 && (parser.pos as usize + 1) < js.len() {
@@ -155,7 +159,7 @@ fn jsmn_parse_string(mut parser: &mut JsmnParser, js: &[u8], tokens: &mut [JsmnT
                         };
                         if !is_hex {
                             parser.pos = start as u32;
-                            return JsmnError::Invalid as _;
+                            return Err(JsmnError::Invalid);
                         }
                         parser.pos += 1;
                         i += 1
@@ -165,14 +169,14 @@ fn jsmn_parse_string(mut parser: &mut JsmnParser, js: &[u8], tokens: &mut [JsmnT
                 _ => {
                     /* Unexpected symbol */
                     parser.pos = start as u32;
-                    return JsmnError::Invalid as _;
+                    return Err(JsmnError::Invalid);
                 }
             }
         }
         parser.pos += 1;
     }
     parser.pos = start as u32;
-    return JsmnError::Part as _;
+    Err(JsmnError::Part)
 }
 /* *
  * Run JSON parser. It parses a JSON data string into and array of tokens, each
@@ -245,7 +249,7 @@ pub fn jsmn_parse(
                 }
             }
             b'"' => {
-                let r = jsmn_parse_string(parser, js, tokens);
+                let r = jsmn_parse_string(parser, js, tokens)?;
                 if r < 0 {
                     return Ok(r);
                 }
