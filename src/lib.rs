@@ -1,3 +1,43 @@
+/*
+ * MIT License
+ *
+ * Copyright (c) 2010 Serge Zaitsev
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+//! jsmn (pronounced like 'jasmine') is Rust port of a minimalistic JSON parser.
+//! It can be easily integrated into resource-limited or embedded projects.
+//!
+//! # Philosophy
+//!
+//! Most JSON parsers offer you a bunch of functions to load JSON data, parse it and
+//! extract any value by its name. jsmn proves that checking the correctness of every
+//! JSON packet or allocating temporary objects to store parsed JSON fields often is
+//! an overkill.
+//!
+//! JSON format itself is extremely simple, so why should we complicate it?
+//!
+//! jsmn is designed to be robust (it should work fine even with erroneous data), fast
+//! (it should parse data on the fly), portable. And of course, simplicity is a key feature
+//! - simple code style, simple algorithm, simple integration into other projects.
+
 #[derive(Default, Debug, Copy, Clone)]
 pub struct Token {
     pub kind: TokenKind,
