@@ -89,7 +89,7 @@ pub enum Error {
 pub struct JsonParser {
     pos: usize,
     tok_next: usize,
-    tok_super: isize,
+    tok_super: Option<usize>,
 }
 
 impl Default for JsonParser {
@@ -97,7 +97,7 @@ impl Default for JsonParser {
         Self {
             pos: 0,
             tok_next: 0,
-            tok_super: -1,
+            tok_super: None,
         }
     }
 }
@@ -122,8 +122,8 @@ impl JsonParser {
                 b'{' | b'[' => {
                     count += 1;
                     let i = self.alloc_token(tokens).ok_or(Error::NoMemory)?;
-                    if self.tok_super != -1 {
-                        let t = &mut tokens[self.tok_super as usize];
+                    if let Some(i) = self.tok_super {
+                        let t = &mut tokens[i];
                         // An object or array can't become a key
                         if let TokenKind::Object | TokenKind::Array = t.kind {
                             return Err(Error::Invalid);
@@ -137,7 +137,7 @@ impl JsonParser {
                         TokenKind::Array
                     };
                     token.start = self.pos as _;
-                    self.tok_super = self.tok_next as isize - 1;
+                    self.tok_super = Some(self.tok_next - 1);
                 }
                 b'}' | b']' => {
                     let kind = if c == b'}' {
@@ -152,7 +152,7 @@ impl JsonParser {
                             if token.kind != kind {
                                 return Err(Error::Invalid);
                             }
-                            self.tok_super = -1;
+                            self.tok_super = None;
                             token.end = self.pos as isize + 1;
                             break;
                         } else {
@@ -166,7 +166,7 @@ impl JsonParser {
                     while i >= 0 {
                         let token = &mut tokens[i as usize];
                         if token.start != -1 && token.end == -1 {
-                            self.tok_super = i;
+                            self.tok_super = Some(i as usize);
                             break;
                         } else {
                             i -= 1
@@ -176,44 +176,47 @@ impl JsonParser {
                 b'"' => {
                     self.parse_string(js, tokens)?;
                     count += 1;
-                    if self.tok_super != -1 {
-                        tokens[self.tok_super as usize].size += 1
+                    if let Some(i) = self.tok_super {
+                        tokens[i].size += 1
                     }
                 }
                 b'\t' | b'\r' | b'\n' | b' ' => {}
-                b':' => self.tok_super = self.tok_next as isize - 1,
+                b':' => self.tok_super = Some(self.tok_next - 1),
                 b',' => {
-                    if self.tok_super != -1
-                        && tokens[self.tok_super as usize].kind != TokenKind::Array
-                        && tokens[self.tok_super as usize].kind != TokenKind::Object
-                    {
-                        let mut i = self.tok_next as isize - 1;
-                        while i >= 0 {
-                            let t = &tokens[i as usize];
-                            if let TokenKind::Array | TokenKind::Object = t.kind {
-                                if t.start != -1 && t.end == -1 {
-                                    self.tok_super = i;
-                                    break;
+                    if let Some(i) = self.tok_super {
+                        match tokens[i].kind {
+                            TokenKind::Array | TokenKind::Object => {}
+                            _ => {
+                                let mut i = self.tok_next as isize - 1;
+                                while i >= 0 {
+                                    let t = &tokens[i as usize];
+                                    if let TokenKind::Array | TokenKind::Object = t.kind {
+                                        if t.start != -1 && t.end == -1 {
+                                            self.tok_super = Some(i as usize);
+                                            break;
+                                        }
+                                    }
+                                    i -= 1
                                 }
                             }
-                            i -= 1
                         }
                     }
                 }
                 b'0'..=b'9' | b'-' | b't' | b'f' | b'n' => {
                     // Primitives are: numbers and booleans and
                     // they must not be keys of the object
-                    if self.tok_super != -1 {
-                        let t = &mut tokens[self.tok_super as usize];
-                        if t.kind == TokenKind::Object || (t.kind == TokenKind::Str && t.size != 0)
-                        {
-                            return Err(Error::Invalid);
+                    if let Some(i) = self.tok_super {
+                        let t = &mut tokens[i];
+                        match t.kind {
+                            TokenKind::Object => return Err(Error::Invalid),
+                            TokenKind::Str if t.size != 0 => return Err(Error::Invalid),
+                            _ => {}
                         }
                     }
                     self.parse_primitive(js, tokens)?;
                     count += 1;
-                    if self.tok_super != -1 {
-                        tokens[self.tok_super as usize].size += 1
+                    if let Some(i) = self.tok_super {
+                        tokens[i].size += 1
                     }
                 }
                 _ => {
