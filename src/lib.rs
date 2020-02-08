@@ -38,12 +38,27 @@
 //! (it should parse data on the fly), portable. And of course, simplicity is a key feature
 //! - simple code style, simple algorithm, simple integration into other projects.
 
-#[derive(Default, Debug, Copy, Clone)]
+#[derive(Default, Debug, Copy, Clone, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
     pub start: i32,
     pub end: i32,
     pub size: i32,
+}
+
+impl Token {
+    pub fn new(kind: TokenKind, start: i32, end: i32) -> Self {
+        Self::with_size(kind, start, end, 0)
+    }
+
+    pub fn with_size(kind: TokenKind, start: i32, end: i32, size: i32) -> Self {
+        Self {
+            kind,
+            start,
+            end,
+            size,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -73,9 +88,9 @@ pub enum Error {
 
 #[derive(Default)]
 pub struct JsonParser {
-    pub pos: u32,
-    pub tok_next: u32,
-    pub tok_super: i32,
+    pos: u32,
+    tok_next: u32,
+    tok_super: i32,
 }
 
 impl JsonParser {
@@ -91,8 +106,10 @@ impl JsonParser {
     /// describing a single JSON object.
     ///
     /// Parse JSON string and fill tokens.
-    pub fn parse(&mut self, js: &[u8], tokens: &mut [Token]) -> Result<i32, Error> {
-        let mut count = self.tok_next as i32;
+    ///
+    /// Returns number of tokens parsed.
+    pub fn parse(&mut self, js: &[u8], tokens: &mut [Token]) -> Result<u32, Error> {
+        let mut count = self.tok_next;
         while (self.pos as usize) < js.len() {
             let c = js[self.pos as usize];
             match c {
@@ -146,10 +163,7 @@ impl JsonParser {
                     }
                 }
                 b'"' => {
-                    let r = self.jsmn_parse_string(js, tokens)?;
-                    if r < 0 {
-                        return Ok(r);
-                    }
+                    self.parse_string(js, tokens)?;
                     count += 1;
                     if self.tok_super != -1 {
                         tokens[self.tok_super as usize].size += 1
@@ -177,10 +191,7 @@ impl JsonParser {
                 }
                 _ => {
                     // In non-strict mode every unquoted value is a primitive
-                    let r = self.jsmn_parse_primitive(js, tokens)?;
-                    if r < 0 {
-                        return Ok(r);
-                    }
+                    self.parse_primitive(js, tokens)?;
                     count += 1;
                     if self.tok_super != -1 {
                         tokens[self.tok_super as usize].size += 1
@@ -201,7 +212,7 @@ impl JsonParser {
     }
 
     /// Fills next available token with JSON primitive.
-    fn jsmn_parse_primitive(&mut self, js: &[u8], tokens: &mut [Token]) -> Result<i32, Error> {
+    fn parse_primitive(&mut self, js: &[u8], tokens: &mut [Token]) -> Result<(), Error> {
         let start = self.pos as i32;
         while (self.pos as usize) < js.len() {
             match js[self.pos as usize] {
@@ -218,7 +229,7 @@ impl JsonParser {
 
         match self.alloc_token(tokens) {
             Some(i) => {
-                fill_token(&mut tokens[i], TokenKind::Primitive, start, self.pos as i32);
+                tokens[i] = Token::new(TokenKind::Primitive, start, self.pos as i32);
             }
             None => {
                 self.pos = start as u32;
@@ -227,11 +238,11 @@ impl JsonParser {
         }
 
         self.pos -= 1;
-        Ok(0)
+        Ok(())
     }
 
     /// Fills next token with JSON string.
-    fn jsmn_parse_string(&mut self, js: &[u8], tokens: &mut [Token]) -> Result<i32, Error> {
+    fn parse_string(&mut self, js: &[u8], tokens: &mut [Token]) -> Result<(), Error> {
         let start: i32 = self.pos as i32;
         self.pos += 1;
         // Skip starting quote
@@ -239,19 +250,14 @@ impl JsonParser {
             let c = js[self.pos as usize];
             // Quote: end of string
             if c == b'\"' {
-                let token = self.alloc_token(tokens);
-                if token.is_none() {
-                    self.pos = start as u32;
-                    return Err(Error::NoMemory);
-                }
-                match token {
-                    Some(i) => fill_token(&mut tokens[i], TokenKind::Str, start + 1, self.pos as _),
+                match self.alloc_token(tokens) {
+                    Some(i) => tokens[i] = Token::new(TokenKind::Str, start + 1, self.pos as i32),
                     None => {
-                        self.pos = start as _;
+                        self.pos = start as u32;
                         return Err(Error::NoMemory);
                     }
                 };
-                return Ok(0);
+                return Ok(());
             }
             // Backslash: Quoted symbol expected
             if c as i32 == '\\' as i32 && (self.pos as usize + 1) < js.len() {
@@ -308,10 +314,52 @@ impl JsonParser {
     }
 }
 
-/// Fills token type and boundaries.
-fn fill_token(token: &mut Token, kind: TokenKind, start: i32, end: i32) {
-    token.kind = kind;
-    token.start = start;
-    token.end = end;
-    token.size = 0;
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(buf: &[u8], len: usize) -> Vec<Token> {
+        let mut v = vec![Token::default(); len];
+        let mut parser = JsonParser::new();
+        let parsed = parser.parse(buf, &mut v).unwrap();
+        assert_eq!(len, parsed as usize);
+        v
+    }
+
+    #[test]
+    fn parse_int() {
+        let s = b"1234";
+        let tokens = parse(s, 1);
+        assert_eq!(vec![Token::new(TokenKind::Primitive, 0, 4)], tokens);
+    }
+
+    #[test]
+    fn parse_int_negative() {
+        let s = b"-1234";
+        let tokens = parse(s, 1);
+        assert_eq!(vec![Token::new(TokenKind::Primitive, 0, 5)], tokens);
+    }
+
+    #[test]
+    fn parse_string() {
+        let s = br#""abcd""#;
+        let tokens = parse(s, 1);
+        assert_eq!(vec![Token::new(TokenKind::Str, 1, 5)], tokens);
+    }
+
+    #[test]
+    fn parse_object() {
+        let s = br#"{"a": "b", "c": 100}"#;
+        let tokens = parse(s, 5);
+        assert_eq!(
+            vec![
+                Token::with_size(TokenKind::Object, 0, 20, 2),
+                Token::with_size(TokenKind::Str, 2, 3, 1),
+                Token::with_size(TokenKind::Str, 7, 8, 0),
+                Token::with_size(TokenKind::Str, 12, 13, 1),
+                Token::with_size(TokenKind::Primitive, 16, 19, 0)
+            ],
+            tokens
+        );
+    }
 }
