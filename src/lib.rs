@@ -138,7 +138,7 @@ impl JsonParser {
                     if let Some(i) = self.tok_super {
                         let t = &mut tokens[i];
                         // An object or array can't become a key
-                        if let TokenKind::Object | TokenKind::Array = t.kind {
+                        if let TokenKind::Object = t.kind {
                             return Err(Error::Invalid);
                         }
                         t.size += 1
@@ -200,8 +200,7 @@ impl JsonParser {
                         match tokens[i].kind {
                             TokenKind::Array | TokenKind::Object => {}
                             _ => {
-                                let mut i = self.tok_next as isize - 1;
-                                while i >= 0 {
+                                for i in (0..self.tok_next).rev() {
                                     let t = &tokens[i as usize];
                                     if let TokenKind::Array | TokenKind::Object = t.kind {
                                         if t.start.is_some() && t.end.is_none() {
@@ -209,7 +208,6 @@ impl JsonParser {
                                             break;
                                         }
                                     }
-                                    i -= 1
                                 }
                             }
                         }
@@ -441,5 +439,24 @@ mod tests {
         let s = br#"["a", "b", "c", 100]"#;
         let err = parse!(s, 4).unwrap_err();
         assert_eq!(Error::NoMemory, err);
+    }
+
+    #[test]
+    fn parse_array_02() {
+        let s = br#"["123", {"a": 1, "b": "c"}, 123]"#;
+        let tokens = parse!(s, 8).unwrap();
+        assert_eq!(
+            &[
+                Token::with_size(TokenKind::Array, Some(0), Some(32), 3),
+                Token::with_size(TokenKind::Str, Some(2), Some(5), 0),
+                Token::with_size(TokenKind::Object, Some(8), Some(26), 2),
+                Token::with_size(TokenKind::Str, Some(10), Some(11), 1),
+                Token::with_size(TokenKind::Primitive, Some(14), Some(15), 0),
+                Token::with_size(TokenKind::Str, Some(18), Some(19), 1),
+                Token::with_size(TokenKind::Str, Some(23), Some(24), 0),
+                Token::with_size(TokenKind::Primitive, Some(28), Some(31), 0),
+            ],
+            &tokens
+        );
     }
 }
