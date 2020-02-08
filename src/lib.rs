@@ -269,7 +269,7 @@ impl JsonParser {
                 tokens[i] = Token::new(TokenKind::Primitive, Some(start), Some(self.pos));
             }
             None => {
-                self.pos = start as _;
+                self.pos = start;
                 return Err(Error::NoMemory);
             }
         }
@@ -292,7 +292,7 @@ impl JsonParser {
                         tokens[i] = Token::new(TokenKind::Str, Some(start + 1), Some(self.pos))
                     }
                     None => {
-                        self.pos = start as _;
+                        self.pos = start;
                         return Err(Error::NoMemory);
                     }
                 };
@@ -311,13 +311,11 @@ impl JsonParser {
                             // If it isn't a hex character we have an error
 
                             let is_hex = match js[self.pos] {
-                                _c @ b'0'..=b'9' => true,
-                                _c @ b'A'..=b'F' => true,
-                                _c @ b'a'..=b'f' => true,
+                                b'0'..=b'9' | b'A'..=b'F' | b'a'..=b'f' => true,
                                 _ => false,
                             };
                             if !is_hex {
-                                self.pos = start as _;
+                                self.pos = start;
                                 return Err(Error::Invalid);
                             }
                             self.pos += 1;
@@ -327,7 +325,7 @@ impl JsonParser {
                     }
                     _ => {
                         /* Unexpected symbol */
-                        self.pos = start as _;
+                        self.pos = start;
                         return Err(Error::Invalid);
                     }
                 }
