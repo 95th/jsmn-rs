@@ -1,9 +1,11 @@
 [package]
 name = "jsmn"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["95th <vargwin@gmail.com>"]
 edition = "2018"
 description = "A minimalistic JSON parser"
 license = "MIT"
+
+[features]
 
 [dependencies]

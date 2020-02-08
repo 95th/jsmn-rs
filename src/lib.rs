@@ -76,7 +76,7 @@ impl Default for TokenKind {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Error {
     /// The string is not a full JSON packet, more bytes expected
     Part,
@@ -123,7 +123,12 @@ impl JsonParser {
                     count += 1;
                     let i = self.alloc_token(tokens).ok_or(Error::NoMemory)?;
                     if self.tok_super != -1 {
-                        tokens[self.tok_super as usize].size += 1
+                        let t = &mut tokens[self.tok_super as usize];
+                        // An object or array can't become a key
+                        if let TokenKind::Object | TokenKind::Array = t.kind {
+                            return Err(Error::Invalid);
+                        }
+                        t.size += 1
                     }
                     let token = &mut tokens[i];
                     token.kind = if c == b'{' {
@@ -195,13 +200,25 @@ impl JsonParser {
                         }
                     }
                 }
-                _ => {
-                    // In non-strict mode every unquoted value is a primitive
+                b'0'..=b'9' | b'-' | b't' | b'f' | b'n' => {
+                    // Primitives are: numbers and booleans and
+                    // they must not be keys of the object
+                    if self.tok_super != -1 {
+                        let t = &mut tokens[self.tok_super as usize];
+                        if t.kind == TokenKind::Object || (t.kind == TokenKind::Str && t.size != 0)
+                        {
+                            return Err(Error::Invalid);
+                        }
+                    }
                     self.parse_primitive(js, tokens)?;
                     count += 1;
                     if self.tok_super != -1 {
                         tokens[self.tok_super as usize].size += 1
                     }
+                }
+                _ => {
+                    // Unexpected char
+                    return Err(Error::Invalid);
                 }
             }
             self.pos += 1;
@@ -324,39 +341,46 @@ impl JsonParser {
 mod tests {
     use super::*;
 
-    fn parse(buf: &[u8], len: usize) -> Vec<Token> {
+    fn parse(buf: &[u8], len: usize) -> Result<Vec<Token>, Error> {
         let mut v = vec![Token::default(); len];
         let mut parser = JsonParser::new();
-        let parsed = parser.parse(buf, &mut v).unwrap();
+        let parsed = parser.parse(buf, &mut v)?;
         assert_eq!(len, parsed as usize);
-        v
+        Ok(v)
     }
 
     #[test]
     fn parse_int() {
         let s = b"1234";
-        let tokens = parse(s, 1);
+        let tokens = parse(s, 1).unwrap();
         assert_eq!(vec![Token::new(TokenKind::Primitive, 0, 4)], tokens);
     }
 
     #[test]
     fn parse_int_negative() {
         let s = b"-1234";
-        let tokens = parse(s, 1);
+        let tokens = parse(s, 1).unwrap();
         assert_eq!(vec![Token::new(TokenKind::Primitive, 0, 5)], tokens);
+    }
+
+    #[test]
+    fn parse_int_invalid() {
+        let s = b"abc1234";
+        let err = parse(s, 1).unwrap_err();
+        assert_eq!(Error::Invalid, err);
     }
 
     #[test]
     fn parse_string() {
         let s = br#""abcd""#;
-        let tokens = parse(s, 1);
+        let tokens = parse(s, 1).unwrap();
         assert_eq!(vec![Token::new(TokenKind::Str, 1, 5)], tokens);
     }
 
     #[test]
     fn parse_object() {
         let s = br#"{"a": "b", "c": 100}"#;
-        let tokens = parse(s, 5);
+        let tokens = parse(s, 5).unwrap();
         assert_eq!(
             vec![
                 Token::with_size(TokenKind::Object, 0, 20, 2),
