@@ -38,26 +38,39 @@
 //! (it should parse data on the fly), portable. And of course, simplicity is a key feature
 //! - simple code style, simple algorithm, simple integration into other projects.
 
+#![no_std]
+
+use core::ops::Range;
+
 #[derive(Default, Debug, Copy, Clone, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
-    pub start: isize,
-    pub end: isize,
+    pub start: Option<usize>,
+    pub end: Option<usize>,
     pub size: usize,
 }
 
 impl Token {
-    pub fn new(kind: TokenKind, start: isize, end: isize) -> Self {
+    pub fn new(kind: TokenKind, start: Option<usize>, end: Option<usize>) -> Self {
         Self::with_size(kind, start, end, 0)
     }
 
-    pub fn with_size(kind: TokenKind, start: isize, end: isize, size: usize) -> Self {
+    pub fn with_size(
+        kind: TokenKind,
+        start: Option<usize>,
+        end: Option<usize>,
+        size: usize,
+    ) -> Self {
         Self {
             kind,
             start,
             end,
             size,
         }
+    }
+
+    pub fn as_range(&self) -> Option<Range<usize>> {
+        self.start.and_then(|start| self.end.map(|end| start..end))
     }
 }
 
@@ -136,7 +149,7 @@ impl JsonParser {
                     } else {
                         TokenKind::Array
                     };
-                    token.start = self.pos as _;
+                    token.start = Some(self.pos);
                     self.tok_super = Some(self.tok_next - 1);
                 }
                 b'}' | b']' => {
@@ -148,12 +161,12 @@ impl JsonParser {
                     let mut i = (self.tok_next - 1) as isize;
                     while i >= 0 {
                         let token = &mut tokens[i as usize];
-                        if token.start != -1 && token.end == -1 {
+                        if token.start.is_some() && token.end.is_none() {
                             if token.kind != kind {
                                 return Err(Error::Invalid);
                             }
                             self.tok_super = None;
-                            token.end = self.pos as isize + 1;
+                            token.end = Some(self.pos + 1);
                             break;
                         } else {
                             i -= 1
@@ -165,7 +178,7 @@ impl JsonParser {
                     }
                     while i >= 0 {
                         let token = &mut tokens[i as usize];
-                        if token.start != -1 && token.end == -1 {
+                        if token.start.is_some() && token.end.is_none() {
                             self.tok_super = Some(i as usize);
                             break;
                         } else {
@@ -191,7 +204,7 @@ impl JsonParser {
                                 while i >= 0 {
                                     let t = &tokens[i as usize];
                                     if let TokenKind::Array | TokenKind::Object = t.kind {
-                                        if t.start != -1 && t.end == -1 {
+                                        if t.start.is_some() && t.end.is_none() {
                                             self.tok_super = Some(i as usize);
                                             break;
                                         }
@@ -229,7 +242,7 @@ impl JsonParser {
         let mut i = self.tok_next as isize - 1;
         while i >= 0 {
             // Unmatched opened object or array
-            if tokens[i as usize].start != -1 && tokens[i as usize].end == -1 {
+            if tokens[i as usize].start.is_some() && tokens[i as usize].end.is_none() {
                 return Err(Error::Part);
             }
             i -= 1
@@ -239,7 +252,7 @@ impl JsonParser {
 
     /// Fills next available token with JSON primitive.
     fn parse_primitive(&mut self, js: &[u8], tokens: &mut [Token]) -> Result<(), Error> {
-        let start = self.pos as isize;
+        let start = self.pos;
         while self.pos < js.len() {
             match js[self.pos] {
                 b':' | b'\t' | b'\r' | b'\n' | b' ' | b',' | b']' | b'}' => break,
@@ -255,7 +268,7 @@ impl JsonParser {
 
         match self.alloc_token(tokens) {
             Some(i) => {
-                tokens[i] = Token::new(TokenKind::Primitive, start, self.pos as _);
+                tokens[i] = Token::new(TokenKind::Primitive, Some(start), Some(self.pos));
             }
             None => {
                 self.pos = start as _;
@@ -269,7 +282,7 @@ impl JsonParser {
 
     /// Fills next token with JSON string.
     fn parse_string(&mut self, js: &[u8], tokens: &mut [Token]) -> Result<(), Error> {
-        let start = self.pos as isize;
+        let start = self.pos;
         self.pos += 1;
         // Skip starting quote
         while self.pos < js.len() {
@@ -277,7 +290,9 @@ impl JsonParser {
             // Quote: end of string
             if c == b'\"' {
                 match self.alloc_token(tokens) {
-                    Some(i) => tokens[i] = Token::new(TokenKind::Str, start + 1, self.pos as _),
+                    Some(i) => {
+                        tokens[i] = Token::new(TokenKind::Str, Some(start + 1), Some(self.pos))
+                    }
                     None => {
                         self.pos = start as _;
                         return Err(Error::NoMemory);
@@ -333,7 +348,7 @@ impl JsonParser {
         let idx = self.tok_next as usize;
         self.tok_next += 1;
         let tok = &mut tokens[idx];
-        tok.end = -1;
+        tok.end = None;
         tok.start = tok.end;
         tok.size = 0;
         Some(idx)
@@ -344,55 +359,87 @@ impl JsonParser {
 mod tests {
     use super::*;
 
-    fn parse(buf: &[u8], len: usize) -> Result<Vec<Token>, Error> {
-        let mut v = vec![Token::default(); len];
-        let mut parser = JsonParser::new();
-        let parsed = parser.parse(buf, &mut v)?;
-        assert_eq!(len, parsed as usize);
-        Ok(v)
+    macro_rules! parse {
+        ($buf: expr, $len: expr) => {{
+            let mut v = [Token::default(); $len];
+            let mut parser = JsonParser::new();
+            parser.parse($buf, &mut v).map(|parsed| {
+                assert_eq!($len, parsed as usize);
+                v
+            })
+        }};
     }
 
     #[test]
     fn parse_int() {
         let s = b"1234";
-        let tokens = parse(s, 1).unwrap();
-        assert_eq!(vec![Token::new(TokenKind::Primitive, 0, 4)], tokens);
+        let tokens = parse!(s, 1).unwrap();
+        assert_eq!(
+            &[Token::new(TokenKind::Primitive, Some(0), Some(4))],
+            &tokens
+        );
     }
 
     #[test]
     fn parse_int_negative() {
         let s = b"-1234";
-        let tokens = parse(s, 1).unwrap();
-        assert_eq!(vec![Token::new(TokenKind::Primitive, 0, 5)], tokens);
+        let tokens = parse!(s, 1).unwrap();
+        assert_eq!(
+            &[Token::new(TokenKind::Primitive, Some(0), Some(5))],
+            &tokens
+        );
     }
 
     #[test]
     fn parse_int_invalid() {
         let s = b"abc1234";
-        let err = parse(s, 1).unwrap_err();
+        let err = parse!(s, 1).unwrap_err();
         assert_eq!(Error::Invalid, err);
     }
 
     #[test]
     fn parse_string() {
         let s = br#""abcd""#;
-        let tokens = parse(s, 1).unwrap();
-        assert_eq!(vec![Token::new(TokenKind::Str, 1, 5)], tokens);
+        let tokens = parse!(s, 1).unwrap();
+        assert_eq!(&[Token::new(TokenKind::Str, Some(1), Some(5))], &tokens);
     }
 
     #[test]
     fn parse_object() {
         let s = br#"{"a": "b", "c": 100}"#;
-        let tokens = parse(s, 5).unwrap();
+        let tokens = parse!(s, 5).unwrap();
         assert_eq!(
-            vec![
-                Token::with_size(TokenKind::Object, 0, 20, 2),
-                Token::with_size(TokenKind::Str, 2, 3, 1),
-                Token::with_size(TokenKind::Str, 7, 8, 0),
-                Token::with_size(TokenKind::Str, 12, 13, 1),
-                Token::with_size(TokenKind::Primitive, 16, 19, 0)
+            &[
+                Token::with_size(TokenKind::Object, Some(0), Some(20), 2),
+                Token::with_size(TokenKind::Str, Some(2), Some(3), 1),
+                Token::with_size(TokenKind::Str, Some(7), Some(8), 0),
+                Token::with_size(TokenKind::Str, Some(12), Some(13), 1),
+                Token::with_size(TokenKind::Primitive, Some(16), Some(19), 0)
             ],
-            tokens
+            &tokens
         );
+    }
+
+    #[test]
+    fn parse_array() {
+        let s = br#"["a", "b", "c", 100]"#;
+        let tokens = parse!(s, 5).unwrap();
+        assert_eq!(
+            &[
+                Token::with_size(TokenKind::Array, Some(0), Some(20), 4),
+                Token::with_size(TokenKind::Str, Some(2), Some(3), 0),
+                Token::with_size(TokenKind::Str, Some(7), Some(8), 0),
+                Token::with_size(TokenKind::Str, Some(12), Some(13), 0),
+                Token::with_size(TokenKind::Primitive, Some(16), Some(19), 0)
+            ],
+            &tokens
+        );
+    }
+
+    #[test]
+    fn parse_array_oom() {
+        let s = br#"["a", "b", "c", 100]"#;
+        let err = parse!(s, 4).unwrap_err();
+        assert_eq!(Error::NoMemory, err);
     }
 }
