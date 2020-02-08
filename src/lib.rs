@@ -41,17 +41,17 @@
 #[derive(Default, Debug, Copy, Clone, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
-    pub start: i32,
-    pub end: i32,
-    pub size: i32,
+    pub start: isize,
+    pub end: isize,
+    pub size: usize,
 }
 
 impl Token {
-    pub fn new(kind: TokenKind, start: i32, end: i32) -> Self {
+    pub fn new(kind: TokenKind, start: isize, end: isize) -> Self {
         Self::with_size(kind, start, end, 0)
     }
 
-    pub fn with_size(kind: TokenKind, start: i32, end: i32, size: i32) -> Self {
+    pub fn with_size(kind: TokenKind, start: isize, end: isize, size: usize) -> Self {
         Self {
             kind,
             start,
@@ -87,9 +87,9 @@ pub enum Error {
 }
 
 pub struct JsonParser {
-    pos: u32,
-    tok_next: u32,
-    tok_super: i32,
+    pos: usize,
+    tok_next: usize,
+    tok_super: isize,
 }
 
 impl Default for JsonParser {
@@ -114,10 +114,10 @@ impl JsonParser {
     /// Parse JSON string and fill tokens.
     ///
     /// Returns number of tokens parsed.
-    pub fn parse(&mut self, js: &[u8], tokens: &mut [Token]) -> Result<u32, Error> {
+    pub fn parse(&mut self, js: &[u8], tokens: &mut [Token]) -> Result<usize, Error> {
         let mut count = self.tok_next;
-        while (self.pos as usize) < js.len() {
-            let c = js[self.pos as usize];
+        while self.pos < js.len() {
+            let c = js[self.pos];
             match c {
                 b'{' | b'[' => {
                     count += 1;
@@ -136,8 +136,8 @@ impl JsonParser {
                     } else {
                         TokenKind::Array
                     };
-                    token.start = self.pos as i32;
-                    self.tok_super = self.tok_next as i32 - 1;
+                    token.start = self.pos as _;
+                    self.tok_super = self.tok_next as isize - 1;
                 }
                 b'}' | b']' => {
                     let kind = if c == b'}' {
@@ -145,7 +145,7 @@ impl JsonParser {
                     } else {
                         TokenKind::Array
                     };
-                    let mut i = (self.tok_next - 1) as i32;
+                    let mut i = (self.tok_next - 1) as isize;
                     while i >= 0 {
                         let token = &mut tokens[i as usize];
                         if token.start != -1 && token.end == -1 {
@@ -153,7 +153,7 @@ impl JsonParser {
                                 return Err(Error::Invalid);
                             }
                             self.tok_super = -1;
-                            token.end = self.pos as i32 + 1;
+                            token.end = self.pos as isize + 1;
                             break;
                         } else {
                             i -= 1
@@ -181,13 +181,13 @@ impl JsonParser {
                     }
                 }
                 b'\t' | b'\r' | b'\n' | b' ' => {}
-                b':' => self.tok_super = self.tok_next as i32 - 1,
+                b':' => self.tok_super = self.tok_next as isize - 1,
                 b',' => {
                     if self.tok_super != -1
                         && tokens[self.tok_super as usize].kind != TokenKind::Array
                         && tokens[self.tok_super as usize].kind != TokenKind::Object
                     {
-                        let mut i = self.tok_next as i32 - 1;
+                        let mut i = self.tok_next as isize - 1;
                         while i >= 0 {
                             let t = &tokens[i as usize];
                             if let TokenKind::Array | TokenKind::Object = t.kind {
@@ -223,7 +223,7 @@ impl JsonParser {
             }
             self.pos += 1;
         }
-        let mut i = self.tok_next as i32 - 1;
+        let mut i = self.tok_next as isize - 1;
         while i >= 0 {
             // Unmatched opened object or array
             if tokens[i as usize].start != -1 && tokens[i as usize].end == -1 {
@@ -236,15 +236,15 @@ impl JsonParser {
 
     /// Fills next available token with JSON primitive.
     fn parse_primitive(&mut self, js: &[u8], tokens: &mut [Token]) -> Result<(), Error> {
-        let start = self.pos as i32;
-        while (self.pos as usize) < js.len() {
-            match js[self.pos as usize] {
+        let start = self.pos as isize;
+        while self.pos < js.len() {
+            match js[self.pos] {
                 b':' | b'\t' | b'\r' | b'\n' | b' ' | b',' | b']' | b'}' => break,
                 _ => {}
             }
 
-            if js[self.pos as usize] < 32 || js[self.pos as usize] >= 127 {
-                self.pos = start as u32;
+            if js[self.pos] < 32 || js[self.pos] >= 127 {
+                self.pos = start as _;
                 return Err(Error::Invalid);
             }
             self.pos += 1;
@@ -252,10 +252,10 @@ impl JsonParser {
 
         match self.alloc_token(tokens) {
             Some(i) => {
-                tokens[i] = Token::new(TokenKind::Primitive, start, self.pos as i32);
+                tokens[i] = Token::new(TokenKind::Primitive, start, self.pos as _);
             }
             None => {
-                self.pos = start as u32;
+                self.pos = start as _;
                 return Err(Error::NoMemory);
             }
         }
@@ -266,42 +266,42 @@ impl JsonParser {
 
     /// Fills next token with JSON string.
     fn parse_string(&mut self, js: &[u8], tokens: &mut [Token]) -> Result<(), Error> {
-        let start: i32 = self.pos as i32;
+        let start = self.pos as isize;
         self.pos += 1;
         // Skip starting quote
-        while (self.pos as usize) < js.len() {
-            let c = js[self.pos as usize];
+        while self.pos < js.len() {
+            let c = js[self.pos];
             // Quote: end of string
             if c == b'\"' {
                 match self.alloc_token(tokens) {
-                    Some(i) => tokens[i] = Token::new(TokenKind::Str, start + 1, self.pos as i32),
+                    Some(i) => tokens[i] = Token::new(TokenKind::Str, start + 1, self.pos as _),
                     None => {
-                        self.pos = start as u32;
+                        self.pos = start as _;
                         return Err(Error::NoMemory);
                     }
                 };
                 return Ok(());
             }
             // Backslash: Quoted symbol expected
-            if c == b'\\' && (self.pos as usize + 1) < js.len() {
+            if c == b'\\' && (self.pos + 1) < js.len() {
                 self.pos += 1;
-                match js[self.pos as usize] {
+                match js[self.pos] {
                     b'"' | b'/' | b'\\' | b'b' | b'f' | b'r' | b'n' | b't' => {}
                     b'u' => {
                         // Allows escaped symbol \uXXXX
                         self.pos += 1;
                         let mut i = 0;
-                        while i < 4 && (self.pos as usize) < js.len() {
+                        while i < 4 && self.pos < js.len() {
                             // If it isn't a hex character we have an error
 
-                            let is_hex = match js[self.pos as usize] {
+                            let is_hex = match js[self.pos] {
                                 _c @ b'0'..=b'9' => true,
                                 _c @ b'A'..=b'F' => true,
                                 _c @ b'a'..=b'f' => true,
                                 _ => false,
                             };
                             if !is_hex {
-                                self.pos = start as u32;
+                                self.pos = start as _;
                                 return Err(Error::Invalid);
                             }
                             self.pos += 1;
@@ -311,14 +311,14 @@ impl JsonParser {
                     }
                     _ => {
                         /* Unexpected symbol */
-                        self.pos = start as u32;
+                        self.pos = start as _;
                         return Err(Error::Invalid);
                     }
                 }
             }
             self.pos += 1;
         }
-        self.pos = start as u32;
+        self.pos = start as _;
         Err(Error::Part)
     }
 
