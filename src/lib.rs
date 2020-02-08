@@ -86,19 +86,25 @@ pub enum Error {
     NoMemory,
 }
 
-#[derive(Default)]
 pub struct JsonParser {
     pos: u32,
     tok_next: u32,
     tok_super: i32,
 }
 
+impl Default for JsonParser {
+    fn default() -> Self {
+        Self {
+            pos: 0,
+            tok_next: 0,
+            tok_super: -1,
+        }
+    }
+}
+
 impl JsonParser {
     pub fn new() -> Self {
-        Self {
-            tok_super: -1,
-            ..Default::default()
-        }
+        Self::default()
     }
 
     ///
