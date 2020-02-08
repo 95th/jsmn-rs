@@ -283,7 +283,7 @@ impl JsonParser {
                 return Ok(());
             }
             // Backslash: Quoted symbol expected
-            if c as i32 == '\\' as i32 && (self.pos as usize + 1) < js.len() {
+            if c == b'\\' && (self.pos as usize + 1) < js.len() {
                 self.pos += 1;
                 match js[self.pos as usize] {
                     b'"' | b'/' | b'\\' | b'b' | b'f' | b'r' | b'n' | b't' => {}
